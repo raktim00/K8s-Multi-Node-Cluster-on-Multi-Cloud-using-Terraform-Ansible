@@ -1,0 +1,36 @@
+---
+- name: Checking SSH connectivity to Kubernetes Master Instance
+  hosts: localhost
+  tasks:
+    - name: Wait for AWS Instance SSH to come up
+      wait_for:
+        host: "{{ groups['aws_k8s_master_host'][0] }}"
+        port: 22
+        state: started
+
+- name: Deploying Kubernetes Master Role on AWS Instance
+  hosts: aws_k8s_master_host
+  roles:
+    - role: k8s_master
+
+- name: Checking SSH connectivity to Kubernetes Slave Instances
+  hosts: localhost
+  tasks:
+    - name: Wait for GCP Instance SSH to come up
+      wait_for:
+        host: "{{ groups['az_gcp_k8s_slave_host'][0] }}"
+        port: 22
+        state: started
+
+    - name: Wait for Azure Instance SSH to come up
+      wait_for:
+        host: "{{ groups['az_gcp_k8s_slave_host'][1] }}"
+        port: 22
+        state: started
+
+- name: Deploying Kubernetes Slave Role on GCP & Azure Instances
+  hosts: az_gcp_k8s_slave_host
+  gather_facts: no
+  roles:
+    - role: k8s_slave
+...

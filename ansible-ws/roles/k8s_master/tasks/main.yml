@@ -1,0 +1,71 @@
+---
+# tasks file for k8s_master
+- name: Add Docker repositories on Master Node
+  yum_repository:
+    name: docker
+    description: DOCKER YUM repo
+    file: docker
+    baseurl: https://download.docker.com/linux/centos/7/$basearch/stable
+    enabled: 1
+    gpgcheck: 1
+    gpgkey: https://download.docker.com/linux/centos/gpg
+
+- name: Add Kubeadm repositories on Master Node
+  yum_repository:
+    name: kube
+    description: Kubernetes YUM repo
+    file: kubernetes
+    baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
+    enabled: 1
+    gpgcheck: 1
+    gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+
+- name: Installing Docker on Master Node
+  command: yum install docker-ce --nobest -y
+
+- name: Installing kubeadm & iproute-tc on Master Node
+  package:
+    name:
+      - kubeadm
+      - iproute-tc
+    state: present
+
+- name: Staring & enabling Docker & kubelet on Master Node
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  loop: "{{ service_names }}"
+
+- name: Pulling the images of k8s master
+  command: kubeadm config images pull
+
+- name: Updating Docker cgroup on Master Node
+  copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+      "exec-opts": ["native.cgroupdriver=systemd"]
+      }
+
+- name: Restart docker on Master Node
+  service:
+    name: docker
+    state: restarted
+
+- name: Initializing k8s cluster
+  command: kubeadm init --control-plane-endpoint "{{ groups['aws_k8s_master_host'][0] }}"  --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=NumCPU --ignore-preflight-errors=Mem
+
+- name: Setting up kubectl on Master Node
+  shell:
+    cmd: |
+      mkdir -p $HOME/.kube
+      sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+      sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+- name: Creating token for Slave
+  command: kubeadm token create  --print-join-command
+  register: token
+
+- name: Cleaning Caches on RAM
+  shell: echo 3 > /proc/sys/vm/drop_caches
